@@ -1,0 +1,4 @@
+# ninja log v5
+0	15349	1721297675291354046	/home/tomohiro/workspace/DiT-3D/metrics/ChamferDistancePytorch/chamfer3D/build/temp.linux-x86_64-cpython-310/home/tomohiro/workspace/DiT-3D/metrics/ChamferDistancePytorch/chamfer3D/chamfer3D.o	8d5bce66eb856328
+1	16806	1721297676207365859	/home/tomohiro/workspace/DiT-3D/metrics/ChamferDistancePytorch/chamfer3D/build/temp.linux-x86_64-cpython-310/home/tomohiro/workspace/DiT-3D/metrics/ChamferDistancePytorch/chamfer3D/chamfer_cuda.o	359f7594137229aa
+20	11887	1721360046638493811	/home/tomohiro/workspace/DiT-3D/metrics/ChamferDistancePytorch/chamfer3D/build/temp.linux-x86_64-cpython-310/home/tomohiro/workspace/DiT-3D/metrics/ChamferDistancePytorch/chamfer3D/chamfer_cuda.o	65bdde6cfef6d144

@@ -1,0 +1,9 @@
+setup.py
+/home/tomohiro/workspace/DiT-3D/metrics/ChamferDistancePytorch/chamfer3D/chamfer3D.cu
+/home/tomohiro/workspace/DiT-3D/metrics/ChamferDistancePytorch/chamfer3D/chamfer_cuda.cpp
+/home/tomohiro/workspace/cross_self_fix_sketch/metrics/ChamferDistancePytorch/chamfer3D/chamfer3D.cu
+/home/tomohiro/workspace/cross_self_fix_sketch/metrics/ChamferDistancePytorch/chamfer3D/chamfer_cuda.cpp
+chamfer_3D.egg-info/PKG-INFO
+chamfer_3D.egg-info/SOURCES.txt
+chamfer_3D.egg-info/dependency_links.txt
+chamfer_3D.egg-info/top_level.txt
