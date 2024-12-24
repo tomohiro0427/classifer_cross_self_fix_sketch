@@ -234,14 +234,32 @@ class GaussianDiffusion:
         emp_y = torch.zeros(y.shape, device= y.device)
         model_points = denoise_fn(data, t, emp_y, f)
 
-        
         model_none = denoise_fn(data, t, emp_y, emp_f)
         # model_full = denoise_fn(data, t, y, f)
 
-        w_y = 3
-        w_f = 4
+        model_output = model_none
 
-        model_output = (w_y*model_sketch - w_y * model_none) +((1+w_f)*model_points - w_f*model_none)
+        w_y = 5
+        w_f = 5
+        now_batch = 0
+        for i in range(w_y):
+            for j in range(w_f):
+                # model_output = (w_y*model_sketch[now_batch] - w_y * model_none[now_batch]) +((1+w_f)*model_points[now_batch] - w_f*model_none[now_batch])
+                if i == 0 and j == 0:
+                    model_output[now_batch] = model_none[now_batch]
+                elif i ==0 or j == 0:
+                    if i == 0 and j >= 1:
+                        # model_output = ((1 + w_f) * model_points - w_f * model_none)
+                        model_output[now_batch] = ((1 + j) * model_points[now_batch] - j * model_none[now_batch])
+                    elif j == 0 and i >= 1:
+                        # model_output = ((1 + w_y) * model_sketch - w_y * model_none)
+                        model_output[now_batch] = ((1 + i) * model_sketch[now_batch] - i * model_none[now_batch])
+                elif i != 0 and j != 0:
+                    model_output[now_batch] = (i*model_sketch[now_batch] - i * model_none[now_batch]) +((1+j)*model_points[now_batch] - j*model_none[now_batch])
+                now_batch += 1
+
+
+        # model_output = (w_y*model_sketch - w_y * model_none) +((1+w_f)*model_points - w_f*model_none)
         # model_output = model_full+ w_y *(model_full - model_sketch ) +w_f*(model_full -model_points )
         # model_output = ((1 + w_f) * model_points - w_f * model_none)
         # model_output = model_none
@@ -304,7 +322,8 @@ class GaussianDiffusion:
 
         assert isinstance(shape, (tuple, list))
         img_t = noise_fn(size=shape, dtype=torch.float, device=device)
-        for t in reversed(range(0, self.num_timesteps if not keep_running else len(self.betas))):
+        # for t in reversed(range(0, self.num_timesteps if not keep_running else len(self.betas))):
+        for t in tqdm(reversed(range(0, self.num_timesteps if not keep_running else len(self.betas))), total=self.num_timesteps):
             t_ = torch.empty(shape[0], dtype=torch.int64, device=device).fill_(t)
             img_t = self.classifier_p_sample(denoise_fn=denoise_fn, data=img_t,t=t_, noise_fn=noise_fn, y=y,f=f,
                                   clip_denoised=clip_denoised, return_pred_xstart=False)
@@ -541,12 +560,12 @@ def get_dataset(dataroot, npoints,category,use_mask=False):
     #                                         )
     tr_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
                                               split='val',
-                                            categories=['table'],
+                                            categories=['chair'],
                                             get_images = ['edit_sketch'],
                                             )
     te_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
                                               split='val',
-                                            categories=['table'],
+                                            categories=['chair'],
                                             get_images = ['edit_sketch'],
                                             )
 
@@ -596,6 +615,12 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
     def new_y_chain(device, num_chain, num_classes):
         return torch.randint(low=0,high=num_classes,size=(num_chain,),device=device)
     
+    #続行時の時間を取得string
+    now = str(datetime.datetime.now()).replace(' ', '_').replace(':', '_').replace('.', '_')
+    save_dir = os.path.join(outf_syn,now,)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
     with torch.no_grad():
 
         samples = []
@@ -605,6 +630,8 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
             pretrained=True).cuda()
 
         for i, data in tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc='Generating Samples'):
+            if i == 0:
+                pass
 
             # x = data['test_points'].transpose(1,2)
             m, s = data['shift'].float(), data['scale'].float()
@@ -615,11 +642,19 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
             image_features = feature_extractor.forward_features(y.cuda())
             # y = image_features[:, 0, :]
             y = image_features
+
+            copy_batch_num = 25
+
+            # x copy 9 batch
+            x = x.repeat(copy_batch_num,1,1)
+            f = f.repeat(copy_batch_num,1,1)
+            y = y.repeat(copy_batch_num,1,1)
             
 
             # gen = model.gen_samples(x.shape, gpu, new_y_chain(gpu,y.shape[0],opt.num_classes), clip_denoised=False).detach().cpu()
             # gen = model.gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
             gen = model.classifier_gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
+            print(gen.shape)
             
             # gen = model.gen_samples_ddim(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
 
@@ -641,27 +676,26 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
                         if not isinstance(v, float) else v) for k, v in results.items()}
 
             jsd = JSD(gen.numpy(), x.numpy())
-
-            output_path = os.path.join(outf_syn, 'table_our_data')
-            if not os.path.exists(output_path):
-                os.makedirs(output_path)
+            
 
             ## y画像の保存
-            for j in range(data['edit_sketch'].shape[0]):
-                s = data['edit_sketch'][j]*255
-                cv2.imwrite(os.path.join(output_path, f'{i}_{j}_y.png'), s.permute(1,2,0).cpu().numpy())
+            # s = s.repeat(copy_batch_num,1,1)
             ## xの点群をnpyファイルで一つ一つ保存
             for j in range(x.shape[0]):
-                np.save(os.path.join(output_path, f'{i}_{j}_x.npy'), x[j].cpu().numpy())
+                np.save(os.path.join(outf_syn,now, f'{i}_{j}_x.npy'), x[j].cpu().numpy())
             ## genの点群をnpyファイルで一つ一つ保存
             for j in range(gen.shape[0]):
-                np.save(os.path.join(output_path, f'{i}_{j}_gen.npy'), gen[j].cpu().numpy())
+                np.save(os.path.join(outf_syn,now, f'{i}_{j}_gen.npy'), gen[j].cpu().numpy())
             for j in range(f.shape[0]):
-                np.save(os.path.join(output_path, f'{i}_{j}_f.npy'), f[j].cpu().numpy())
+                np.save(os.path.join(outf_syn,now, f'{i}_{j}_f.npy'), f[j].cpu().numpy())
+            for j in range(copy_batch_num):
+                s = data['edit_sketch'][0]*255
+                
+                cv2.imwrite(os.path.join(outf_syn,now, f'{i}_{j}_y.png'), s.permute(1,2,0).cpu().numpy())
 
             evaluator.update(results, jsd)
-            if (i+1)%120 == 0:
-                break           
+            # if (i+1)%5 == 0:
+            # break
 
         stats = evaluator.finalize_stats()
 
@@ -786,7 +820,7 @@ def parse_args():
     parser.add_argument('--category', default='chair')
     parser.add_argument('--num_classes', type=int, default=55)
 
-    parser.add_argument('--bs', type=int, default=64, help='input batch size')
+    parser.add_argument('--bs', type=int, default=1, help='input batch size')
     parser.add_argument('--workers', type=int, default=16, help='workers')
     parser.add_argument('--niter', type=int, default=10000, help='number of epochs to train for')
 

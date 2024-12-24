@@ -229,22 +229,34 @@ class GaussianDiffusion:
 
     def classifier_p_mean_variance(self, denoise_fn, data, t, y,f, clip_denoised: bool, return_pred_xstart: bool):
         emp_f = torch.zeros(f.shape, device= f.device)
-        model_sketch = denoise_fn(data, t, y, emp_f)
-
         emp_y = torch.zeros(y.shape, device= y.device)
-        model_points = denoise_fn(data, t, emp_y, f)
-
         
-        model_none = denoise_fn(data, t, emp_y, emp_f)
-        # model_full = denoise_fn(data, t, y, f)
-
         w_y = 3
-        w_f = 4
+        w_f = 6
 
-        model_output = (w_y*model_sketch - w_y * model_none) +((1+w_f)*model_points - w_f*model_none)
-        # model_output = model_full+ w_y *(model_full - model_sketch ) +w_f*(model_full -model_points )
-        # model_output = ((1 + w_f) * model_points - w_f * model_none)
-        # model_output = model_none
+        if w_y == 0 and w_f == 0:
+            model_none = denoise_fn(data, t, emp_y, emp_f)
+            model_output = model_none
+        elif w_y ==0 or w_f == 0:
+            model_none = denoise_fn(data, t, emp_y, emp_f)
+            if w_y == 0 and w_f >= 1:
+                model_points = denoise_fn(data, t, emp_y, f)
+                model_output = ((1 + w_f) * model_points - w_f * model_none)
+            elif w_f == 0 and w_y >= 1:
+                model_sketch = denoise_fn(data, t, y, emp_f)
+                model_output = ((1 + w_y) * model_sketch - w_y * model_none)
+        elif w_y != 0 and w_f != 0:
+            model_points = denoise_fn(data, t, emp_y, f)
+            model_sketch = denoise_fn(data, t, y, emp_f)
+            model_none = denoise_fn(data, t, emp_y, emp_f)
+            if w_y == w_f:
+                model_output = ((1 + w_y) * model_sketch - w_y * model_none) +w_f*(model_points - model_none)
+            elif w_y > w_f:
+                model_output = ((1 + w_y) * model_sketch - w_y * model_none) +w_f*(model_points - model_none)
+            elif w_y < w_f:
+                model_output = ((1 + w_f) * model_points - w_f * model_none) +w_y*(model_sketch - model_none)
+        else:
+            raise NotImplementedError
 
         if self.model_var_type in ['fixedsmall', 'fixedlarge']:
             # below: only log_variance is used in the KL computations
@@ -541,12 +553,12 @@ def get_dataset(dataroot, npoints,category,use_mask=False):
     #                                         )
     tr_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
                                               split='val',
-                                            categories=['table'],
+                                            categories=['chair'],
                                             get_images = ['edit_sketch'],
                                             )
     te_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
                                               split='val',
-                                            categories=['table'],
+                                            categories=['chair'],
                                             get_images = ['edit_sketch'],
                                             )
 
@@ -579,7 +591,7 @@ def get_dataloader(opt, train_dataset, test_dataset=None):
 
     if test_dataset is not None:
         test_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.bs,sampler=test_sampler,
-                                                   shuffle=True, num_workers=int(opt.workers), drop_last=False)
+                                                   shuffle=False, num_workers=int(opt.workers), drop_last=False)
     else:
         test_dataloader = None
 
@@ -605,63 +617,61 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
             pretrained=True).cuda()
 
         for i, data in tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc='Generating Samples'):
+            multi_sample_num = 3
+            for k in range(multi_sample_num):
 
             # x = data['test_points'].transpose(1,2)
-            m, s = data['shift'].float(), data['scale'].float()
-            # y = data['cate_idx']
-            x = data['edit_points'].transpose(1,2)
-            f = data['fix_points'].transpose(1,2)
-            y = data['edit_sketch']
-            image_features = feature_extractor.forward_features(y.cuda())
-            # y = image_features[:, 0, :]
-            y = image_features
-            
+                m, s = data['shift'].float(), data['scale'].float()
+                # y = data['cate_idx']
+                x = data['edit_points'].transpose(1,2)
+                f = data['fix_points'].transpose(1,2)
+                y = data['edit_sketch']
+                image_features = feature_extractor.forward_features(y.cuda())
+                # y = image_features[:, 0, :]
+                y = image_features
+                
 
-            # gen = model.gen_samples(x.shape, gpu, new_y_chain(gpu,y.shape[0],opt.num_classes), clip_denoised=False).detach().cpu()
-            # gen = model.gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
-            gen = model.classifier_gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
-            
-            # gen = model.gen_samples_ddim(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
+                # gen = model.gen_samples(x.shape, gpu, new_y_chain(gpu,y.shape[0],opt.num_classes), clip_denoised=False).detach().cpu()
+                # gen = model.gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
+                gen = model.classifier_gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
+                
+                # gen = model.gen_samples_ddim(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
 
-            gen = gen.transpose(1,2).contiguous()
-            x = x.transpose(1,2).contiguous()
-            f = f.transpose(1,2).contiguous()
+                gen = gen.transpose(1,2).contiguous()
+                x = x.transpose(1,2).contiguous()
+                f = f.transpose(1,2).contiguous()
 
-            gen = gen * s + m
-            x = x * s + m
-            f = f * s + m
-            samples.append(gen.to(gpu).contiguous())
+                gen = gen * s + m
+                x = x * s + m
+                f = f * s + m
+                samples.append(gen.to(gpu).contiguous())
 
-            visualize_pointcloud_batch(os.path.join(outf_syn, f'{i}_{gpu}.png'), gen, None,
-                                       None, None)
-            
-            # Compute metrics
-            results = compute_all_metrics(gen, x, opt.bs)
-            results = {k: (v.cpu().detach().item()
-                        if not isinstance(v, float) else v) for k, v in results.items()}
+                visualize_pointcloud_batch(os.path.join(outf_syn, f'{i}_{gpu}.png'), gen, None,
+                                        None, None)
+                
+                # Compute metrics
+                results = compute_all_metrics(gen, x, opt.bs)
+                results = {k: (v.cpu().detach().item()
+                            if not isinstance(v, float) else v) for k, v in results.items()}
 
-            jsd = JSD(gen.numpy(), x.numpy())
+                jsd = JSD(gen.numpy(), x.numpy())
 
-            output_path = os.path.join(outf_syn, 'table_our_data')
-            if not os.path.exists(output_path):
-                os.makedirs(output_path)
+                ## y画像の保存
+                for j in range(data['edit_sketch'].shape[0]):
+                    s = data['edit_sketch'][j]*255
+                    cv2.imwrite(os.path.join(outf_syn,'test/', f'{j}_{k}_y.png'), s.permute(1,2,0).cpu().numpy())
+                ## xの点群をnpyファイルで一つ一つ保存
+                for j in range(x.shape[0]):
+                    np.save(os.path.join(outf_syn,'test/', f'{j}_{k}_x.npy'), x[j].cpu().numpy())
+                ## genの点群をnpyファイルで一つ一つ保存
+                for j in range(gen.shape[0]):
+                    np.save(os.path.join(outf_syn,'test/', f'{j}_{k}_gen.npy'), gen[j].cpu().numpy())
+                for j in range(f.shape[0]):
+                    np.save(os.path.join(outf_syn,'test/', f'{j}_{k}_f.npy'), f[j].cpu().numpy())
 
-            ## y画像の保存
-            for j in range(data['edit_sketch'].shape[0]):
-                s = data['edit_sketch'][j]*255
-                cv2.imwrite(os.path.join(output_path, f'{i}_{j}_y.png'), s.permute(1,2,0).cpu().numpy())
-            ## xの点群をnpyファイルで一つ一つ保存
-            for j in range(x.shape[0]):
-                np.save(os.path.join(output_path, f'{i}_{j}_x.npy'), x[j].cpu().numpy())
-            ## genの点群をnpyファイルで一つ一つ保存
-            for j in range(gen.shape[0]):
-                np.save(os.path.join(output_path, f'{i}_{j}_gen.npy'), gen[j].cpu().numpy())
-            for j in range(f.shape[0]):
-                np.save(os.path.join(output_path, f'{i}_{j}_f.npy'), f[j].cpu().numpy())
-
-            evaluator.update(results, jsd)
-            if (i+1)%120 == 0:
-                break           
+                evaluator.update(results, jsd)
+                # if (i+1)%5 == 0:
+            break
 
         stats = evaluator.finalize_stats()
 
@@ -836,7 +846,7 @@ def parse_args():
     parser.add_argument('--eval_path',
                         default='')
 
-    parser.add_argument('--manualSeed', default=41, type=int, help='random seed')
+    parser.add_argument('--manualSeed', default=42, type=int, help='random seed')
 
     opt = parser.parse_args()
 

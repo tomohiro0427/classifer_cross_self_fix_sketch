@@ -21,7 +21,7 @@ from datasets.shapenet_data_pc import ShapeNet15kPointClouds
 from models.dit3d import DiT3D_models
 from utils.misc import Evaluator
 from models.dit3d_window_attn import DiT3D_models_WindAttn
-from data_module.data_module import PointCloudPartSegWhithSketch, RandamPartialPointCloudWhithSketch
+from data_module.data_module import PointCloudPartSegWhithSketch, RandamPartialPointCloudWhithSketch, Sketch_our
 
 import numpy as np
 import cv2
@@ -538,16 +538,12 @@ def get_dataset(dataroot, npoints,category,use_mask=False):
     #                                           split='val',
     #                                         categories=['chair'],
     #                                         get_images = ['edit_sketch'],
-    #                                         )
-    tr_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
-                                              split='val',
-                                            categories=['table'],
-                                            get_images = ['edit_sketch'],
+    #       
+    #                                   )
+    path_root = '../cross_sketch_all_Mesh/output_our/04379243'
+    tr_dataset = Sketch_our(root=path_root,
                                             )
-    te_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
-                                              split='val',
-                                            categories=['table'],
-                                            get_images = ['edit_sketch'],
+    te_dataset = Sketch_our(root=path_root,
                                             )
 
     
@@ -608,9 +604,11 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
 
             # x = data['test_points'].transpose(1,2)
             m, s = data['shift'].float(), data['scale'].float()
-            # y = data['cate_idx']
-            x = data['edit_points'].transpose(1,2)
+
+            x = data['sample_points'].transpose(1,2)
+            
             f = data['fix_points'].transpose(1,2)
+            print(f.shape)
             y = data['edit_sketch']
             image_features = feature_extractor.forward_features(y.cuda())
             # y = image_features[:, 0, :]
@@ -642,26 +640,26 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
 
             jsd = JSD(gen.numpy(), x.numpy())
 
-            output_path = os.path.join(outf_syn, 'table_our_data')
-            if not os.path.exists(output_path):
-                os.makedirs(output_path)
+            out_path = os.path.join(outf_syn,'test/')
+            if not os.path.exists(out_path):
+                os.makedirs(out_path)
 
             ## y画像の保存
             for j in range(data['edit_sketch'].shape[0]):
                 s = data['edit_sketch'][j]*255
-                cv2.imwrite(os.path.join(output_path, f'{i}_{j}_y.png'), s.permute(1,2,0).cpu().numpy())
+                cv2.imwrite(os.path.join(outf_syn,'test/', f'{i}_{j}_y.png'), s.permute(1,2,0).cpu().numpy())
             ## xの点群をnpyファイルで一つ一つ保存
             for j in range(x.shape[0]):
-                np.save(os.path.join(output_path, f'{i}_{j}_x.npy'), x[j].cpu().numpy())
+                np.save(os.path.join(outf_syn,'test/', f'{i}_{j}_x.npy'), x[j].cpu().numpy())
             ## genの点群をnpyファイルで一つ一つ保存
             for j in range(gen.shape[0]):
-                np.save(os.path.join(output_path, f'{i}_{j}_gen.npy'), gen[j].cpu().numpy())
+                np.save(os.path.join(outf_syn,'test/', f'{i}_{j}_gen.npy'), gen[j].cpu().numpy())
             for j in range(f.shape[0]):
-                np.save(os.path.join(output_path, f'{i}_{j}_f.npy'), f[j].cpu().numpy())
+                np.save(os.path.join(outf_syn,'test/', f'{i}_{j}_f.npy'), f[j].cpu().numpy())
 
             evaluator.update(results, jsd)
-            if (i+1)%120 == 0:
-                break           
+            # if (i+1)%10 == 0:
+            #     break   
 
         stats = evaluator.finalize_stats()
 
@@ -786,7 +784,7 @@ def parse_args():
     parser.add_argument('--category', default='chair')
     parser.add_argument('--num_classes', type=int, default=55)
 
-    parser.add_argument('--bs', type=int, default=64, help='input batch size')
+    parser.add_argument('--bs', type=int, default=1, help='input batch size')
     parser.add_argument('--workers', type=int, default=16, help='workers')
     parser.add_argument('--niter', type=int, default=10000, help='number of epochs to train for')
 

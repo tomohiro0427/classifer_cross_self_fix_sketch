@@ -8,3 +8,4 @@ epoch_59.pth
 wandb/
 **/*.pth
 **/*.t7
+quantitative_our/
