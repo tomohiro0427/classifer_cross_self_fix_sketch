@@ -239,7 +239,7 @@ class GaussianDiffusion:
         # model_full = denoise_fn(data, t, y, f)
 
         w_y = 3
-        w_f = 4
+        w_f = 3
 
         model_output = (w_y*model_sketch - w_y * model_none) +((1+w_f)*model_points - w_f*model_none)
         # model_output = model_full+ w_y *(model_full - model_sketch ) +w_f*(model_full -model_points )
@@ -541,12 +541,12 @@ def get_dataset(dataroot, npoints,category,use_mask=False):
     #                                         )
     tr_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
                                               split='val',
-                                            categories=['table'],
+                                            categories=['lamp'],
                                             get_images = ['edit_sketch'],
                                             )
     te_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
                                               split='val',
-                                            categories=['table'],
+                                            categories=['lamp'],
                                             get_images = ['edit_sketch'],
                                             )
 
@@ -642,7 +642,7 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
 
             jsd = JSD(gen.numpy(), x.numpy())
 
-            output_path = os.path.join(outf_syn, 'table_our_data')
+            output_path = os.path.join(outf_syn, 'lamp_our_data')
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
 

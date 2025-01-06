@@ -150,6 +150,21 @@ class GaussianDiffusion:
 
 
     def p_mean_variance(self, denoise_fn, data, t, y,f, clip_denoised: bool, return_pred_xstart: bool):
+
+        # emp_f = torch.zeros(f.shape, device= f.device)
+        # model_sketch = denoise_fn(data, t, y, emp_f)
+
+        # emp_y = torch.zeros(y.shape, device= y.device)
+        # model_points = denoise_fn(data, t, emp_y, f)
+
+        
+        # model_none = denoise_fn(data, t, emp_y, emp_f)
+        # # model_full = denoise_fn(data, t, y, f)
+
+        # w_y = 3
+        # w_f = 2
+
+        # model_output = (w_y*model_sketch - w_y * model_none) +((1+w_f)*model_points - w_f*model_none)
         
         model_output = denoise_fn(data, t, y, f)
 

@@ -21,7 +21,7 @@ from datasets.shapenet_data_pc import ShapeNet15kPointClouds
 from models.dit3d import DiT3D_models
 from utils.misc import Evaluator
 from models.dit3d_window_attn import DiT3D_models_WindAttn
-from data_module.data_module import PointCloudPartSegWhithSketch, RandamPartialPointCloudWhithSketch
+from data_module.data_module import PointCloudPartSegWhithSketch, RandamPartialPointCloudWhithSketch, Sketch_our
 
 import numpy as np
 import cv2
@@ -558,15 +558,21 @@ def get_dataset(dataroot, npoints,category,use_mask=False):
     #                                         categories=['chair'],
     #                                         get_images = ['edit_sketch'],
     #                                         )
-    tr_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
-                                              split='val',
-                                            categories=['chair'],
-                                            get_images = ['edit_sketch'],
+    # tr_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
+    #                                           split='val',
+    #                                         categories=['chair'],
+    #                                         get_images = ['edit_sketch'],
+    #                                         )
+    # te_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
+    #                                           split='val',
+    #                                         categories=['chair'],
+    #                                         get_images = ['edit_sketch'],
+    #                                         )
+
+    path_root = '../evaluate_datas/gen2edit/compare_data/datas/15/'
+    tr_dataset = Sketch_our(root=path_root,
                                             )
-    te_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
-                                              split='val',
-                                            categories=['chair'],
-                                            get_images = ['edit_sketch'],
+    te_dataset = Sketch_our(root=path_root,
                                             )
 
     
@@ -617,7 +623,8 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
     
     #続行時の時間を取得string
     now = str(datetime.datetime.now()).replace(' ', '_').replace(':', '_').replace('.', '_')
-    save_dir = os.path.join(outf_syn,now,)
+    name = 'output_our_5_1'
+    save_dir = os.path.join(outf_syn,now,name)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -630,70 +637,72 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
             pretrained=True).cuda()
 
         for i, data in tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc='Generating Samples'):
+            print(i)
             if i == 0:
-                pass
-
-            # x = data['test_points'].transpose(1,2)
-            m, s = data['shift'].float(), data['scale'].float()
-            # y = data['cate_idx']
-            x = data['edit_points'].transpose(1,2)
-            f = data['fix_points'].transpose(1,2)
-            y = data['edit_sketch']
-            image_features = feature_extractor.forward_features(y.cuda())
-            # y = image_features[:, 0, :]
-            y = image_features
-
-            copy_batch_num = 25
-
-            # x copy 9 batch
-            x = x.repeat(copy_batch_num,1,1)
-            f = f.repeat(copy_batch_num,1,1)
-            y = y.repeat(copy_batch_num,1,1)
-            
-
-            # gen = model.gen_samples(x.shape, gpu, new_y_chain(gpu,y.shape[0],opt.num_classes), clip_denoised=False).detach().cpu()
-            # gen = model.gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
-            gen = model.classifier_gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
-            print(gen.shape)
-            
-            # gen = model.gen_samples_ddim(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
-
-            gen = gen.transpose(1,2).contiguous()
-            x = x.transpose(1,2).contiguous()
-            f = f.transpose(1,2).contiguous()
-
-            gen = gen * s + m
-            x = x * s + m
-            f = f * s + m
-            samples.append(gen.to(gpu).contiguous())
-
-            visualize_pointcloud_batch(os.path.join(outf_syn, f'{i}_{gpu}.png'), gen, None,
-                                       None, None)
-            
-            # Compute metrics
-            results = compute_all_metrics(gen, x, opt.bs)
-            results = {k: (v.cpu().detach().item()
-                        if not isinstance(v, float) else v) for k, v in results.items()}
-
-            jsd = JSD(gen.numpy(), x.numpy())
-            
-
-            ## y画像の保存
-            # s = s.repeat(copy_batch_num,1,1)
-            ## xの点群をnpyファイルで一つ一つ保存
-            for j in range(x.shape[0]):
-                np.save(os.path.join(outf_syn,now, f'{i}_{j}_x.npy'), x[j].cpu().numpy())
-            ## genの点群をnpyファイルで一つ一つ保存
-            for j in range(gen.shape[0]):
-                np.save(os.path.join(outf_syn,now, f'{i}_{j}_gen.npy'), gen[j].cpu().numpy())
-            for j in range(f.shape[0]):
-                np.save(os.path.join(outf_syn,now, f'{i}_{j}_f.npy'), f[j].cpu().numpy())
-            for j in range(copy_batch_num):
-                s = data['edit_sketch'][0]*255
                 
-                cv2.imwrite(os.path.join(outf_syn,now, f'{i}_{j}_y.png'), s.permute(1,2,0).cpu().numpy())
+                # x = data['test_points'].transpose(1,2)
+                m, s = data['shift'].float(), data['scale'].float()
+                # y = data['cate_idx']
+                x = data['sample_points'].transpose(1,2)
+                f = data['fix_points'].transpose(1,2)
+                y = data['edit_sketch']
+                image_features = feature_extractor.forward_features(y.cuda())
+                # y = image_features[:, 0, :]
+                y = image_features
 
-            evaluator.update(results, jsd)
+                copy_batch_num = 25
+
+                # x copy 9 batch
+                x = x.repeat(copy_batch_num,1,1)
+                f = f.repeat(copy_batch_num,1,1)
+                y = y.repeat(copy_batch_num,1,1)
+                
+
+                # gen = model.gen_samples(x.shape, gpu, new_y_chain(gpu,y.shape[0],opt.num_classes), clip_denoised=False).detach().cpu()
+                # gen = model.gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
+                gen = model.classifier_gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
+                print(gen.shape)
+                
+                # gen = model.gen_samples_ddim(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
+
+                gen = gen.transpose(1,2).contiguous()
+                x = x.transpose(1,2).contiguous()
+                f = f.transpose(1,2).contiguous()
+
+                gen = gen * s + m
+                x = x * s + m
+                f = f * s + m
+                samples.append(gen.to(gpu).contiguous())
+
+                visualize_pointcloud_batch(os.path.join(outf_syn, f'{i}_{gpu}.png'), gen, None,
+                                        None, None)
+                
+                # Compute metrics
+                results = compute_all_metrics(gen, x, opt.bs)
+                results = {k: (v.cpu().detach().item()
+                            if not isinstance(v, float) else v) for k, v in results.items()}
+
+                jsd = JSD(gen.numpy(), x.numpy())
+                
+
+                ## y画像の保存
+                # s = s.repeat(copy_batch_num,1,1)
+                ## xの点群をnpyファイルで一つ一つ保存
+                for j in range(x.shape[0]):
+                    np.save(os.path.join(outf_syn,now, f'{i}_{j}_x.npy'), x[j].cpu().numpy())
+                ## genの点群をnpyファイルで一つ一つ保存
+                for j in range(gen.shape[0]):
+                    np.save(os.path.join(outf_syn,now, f'{i}_{j}_gen.npy'), gen[j].cpu().numpy())
+                for j in range(f.shape[0]):
+                    np.save(os.path.join(outf_syn,now, f'{i}_{j}_f.npy'), f[j].cpu().numpy())
+                for j in range(copy_batch_num):
+                    s = data['edit_sketch'][0]*255
+                    
+                    cv2.imwrite(os.path.join(outf_syn,now, f'{i}_{j}_y.png'), s.permute(1,2,0).cpu().numpy())
+
+                evaluator.update(results, jsd)
+            else:
+                pass
             # if (i+1)%5 == 0:
             # break
 

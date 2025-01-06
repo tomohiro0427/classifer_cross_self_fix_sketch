@@ -239,9 +239,10 @@ class GaussianDiffusion:
         # model_full = denoise_fn(data, t, y, f)
 
         w_y = 3
-        w_f = 4
+        w_f = 3
 
         model_output = (w_y*model_sketch - w_y * model_none) +((1+w_f)*model_points - w_f*model_none)
+        # model_output = ((1+w_y)*model_sketch - w_y * model_none)
         # model_output = model_full+ w_y *(model_full - model_sketch ) +w_f*(model_full -model_points )
         # model_output = ((1 + w_f) * model_points - w_f * model_none)
         # model_output = model_none
@@ -540,7 +541,11 @@ def get_dataset(dataroot, npoints,category,use_mask=False):
     #                                         get_images = ['edit_sketch'],
     #       
     #                                   )
-    path_root = '../cross_sketch_all_Mesh/output_our/04379243'
+    # path_root = '../cross_sketch_all_Mesh/output_our/04379243'
+    # path_root = '../cross_sketch_all_Mesh/figure_samples/figure_2/'
+    
+    # path_root = '../evaluate_datas/gen2edit/output_our/03001627/9/2/'
+    path_root = '../evaluate_datas/gen2edit/compare_data/datas/'
     tr_dataset = Sketch_our(root=path_root,
                                             )
     te_dataset = Sketch_our(root=path_root,
