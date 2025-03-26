@@ -21,7 +21,8 @@ from datasets.shapenet_data_pc import ShapeNet15kPointClouds
 from models.dit3d import DiT3D_models
 from utils.misc import Evaluator
 from models.dit3d_window_attn import DiT3D_models_WindAttn
-from data_module.data_module import PointCloudPartSegWhithSketch, RandamPartialPointCloudWhithSketch, Sketch_our
+from data_module.data_module import PointCloudPartSegWhithSketch, RandamPartialPointCloudWhithSketch
+import shutil
 
 import numpy as np
 import cv2
@@ -234,32 +235,14 @@ class GaussianDiffusion:
         emp_y = torch.zeros(y.shape, device= y.device)
         model_points = denoise_fn(data, t, emp_y, f)
 
+        
         model_none = denoise_fn(data, t, emp_y, emp_f)
         # model_full = denoise_fn(data, t, y, f)
 
-        model_output = model_none
+        w_y = 3
+        w_f = 3
 
-        w_y = 4
-        w_f = 4
-        now_batch = 0
-        for i in range(w_y):
-            for j in range(w_f):
-                # model_output = (w_y*model_sketch[now_batch] - w_y * model_none[now_batch]) +((1+w_f)*model_points[now_batch] - w_f*model_none[now_batch])
-                if i == 0 and j == 0:
-                    model_output[now_batch] = model_none[now_batch]
-                elif i ==0 or j == 0:
-                    if i == 0 and j >= 1:
-                        # model_output = ((1 + w_f) * model_points - w_f * model_none)
-                        model_output[now_batch] = ((1 + j) * model_points[now_batch] - j * model_none[now_batch])
-                    elif j == 0 and i >= 1:
-                        # model_output = ((1 + w_y) * model_sketch - w_y * model_none)
-                        model_output[now_batch] = ((1 + i) * model_sketch[now_batch] - i * model_none[now_batch])
-                elif i != 0 and j != 0:
-                    model_output[now_batch] = (i*model_sketch[now_batch] - i * model_none[now_batch]) +((1+j)*model_points[now_batch] - j*model_none[now_batch])
-                now_batch += 1
-
-
-        # model_output = (w_y*model_sketch - w_y * model_none) +((1+w_f)*model_points - w_f*model_none)
+        model_output = (w_y*model_sketch - w_y * model_none) +((1+w_f)*model_points - w_f*model_none)
         # model_output = model_full+ w_y *(model_full - model_sketch ) +w_f*(model_full -model_points )
         # model_output = ((1 + w_f) * model_points - w_f * model_none)
         # model_output = model_none
@@ -322,8 +305,7 @@ class GaussianDiffusion:
 
         assert isinstance(shape, (tuple, list))
         img_t = noise_fn(size=shape, dtype=torch.float, device=device)
-        # for t in reversed(range(0, self.num_timesteps if not keep_running else len(self.betas))):
-        for t in tqdm(reversed(range(0, self.num_timesteps if not keep_running else len(self.betas))), total=self.num_timesteps):
+        for t in reversed(range(0, self.num_timesteps if not keep_running else len(self.betas))):
             t_ = torch.empty(shape[0], dtype=torch.int64, device=device).fill_(t)
             img_t = self.classifier_p_sample(denoise_fn=denoise_fn, data=img_t,t=t_, noise_fn=noise_fn, y=y,f=f,
                                   clip_denoised=clip_denoised, return_pred_xstart=False)
@@ -558,22 +540,15 @@ def get_dataset(dataroot, npoints,category,use_mask=False):
     #                                         categories=['chair'],
     #                                         get_images = ['edit_sketch'],
     #                                         )
-    # tr_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
-    #                                           split='val',
-    #                                         categories=['chair'],
-    #                                         get_images = ['edit_sketch'],
-    #                                         )
-    # te_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
-    #                                           split='val',
-    #                                         categories=['chair'],
-    #                                         get_images = ['edit_sketch'],
-    #                                         )
-
-    # path_root = '../evaluate_datas/gen2edit/compare_data/datas/18/'
-    path_root = '../evaluate_datas/challenging/add/12/'
-    tr_dataset = Sketch_our(root=path_root,
+    tr_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
+                                              split='val',
+                                            categories=['lamp'],
+                                            get_images = ['edit_sketch'],
                                             )
-    te_dataset = Sketch_our(root=path_root,
+    te_dataset = RandamPartialPointCloudWhithSketch(root=dataroot,
+                                              split='val',
+                                            categories=['lamp'],
+                                            get_images = ['edit_sketch'],
                                             )
 
     
@@ -622,13 +597,6 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
     def new_y_chain(device, num_chain, num_classes):
         return torch.randint(low=0,high=num_classes,size=(num_chain,),device=device)
     
-    #続行時の時間を取得string
-    now = str(datetime.datetime.now()).replace(' ', '_').replace(':', '_').replace('.', '_')
-    name = 'traiangel'
-    save_dir = os.path.join(outf_syn,now,name)
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-
     with torch.no_grad():
 
         samples = []
@@ -638,79 +606,75 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
             pretrained=True).cuda()
 
         for i, data in tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc='Generating Samples'):
-            print(i)
-            if i == 0:
-                
-                # x = data['test_points'].transpose(1,2)
-                m, s = data['shift'].float(), data['scale'].float()
-                # y = data['cate_idx']
-                x = data['sample_points'].transpose(1,2)
-                f = data['fix_points'].transpose(1,2)
-                # f = data['sample_points'].transpose(1,2)
-                y = data['edit_sketch']
-                image_features = feature_extractor.forward_features(y.cuda())
-                # y = image_features[:, 0, :]
-                y = image_features
 
-                copy_batch_num = 16
+            # x = data['test_points'].transpose(1,2)
+            m, s = data['shift'].float(), data['scale'].float()
+            # y = data['cate_idx']
+            x = data['edit_points'].transpose(1,2)
+            path = data['path']
+        #     f = data['fix_points'].transpose(1,2)
+        #     y = data['edit_sketch']
+        #     image_features = feature_extractor.forward_features(y.cuda())
+        #     # y = image_features[:, 0, :]
+        #     y = image_features
+            
 
-                # x copy 9 batch
-                x = x.repeat(copy_batch_num,1,1)
-                f = f.repeat(copy_batch_num,1,1)
-                y = y.repeat(copy_batch_num,1,1)
-                
+        #     # gen = model.gen_samples(x.shape, gpu, new_y_chain(gpu,y.shape[0],opt.num_classes), clip_denoised=False).detach().cpu()
+        #     # gen = model.gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
+        #     gen = model.classifier_gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
+            
+        #     # gen = model.gen_samples_ddim(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
 
-                # gen = model.gen_samples(x.shape, gpu, new_y_chain(gpu,y.shape[0],opt.num_classes), clip_denoised=False).detach().cpu()
-                # gen = model.gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
-                gen = model.classifier_gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
-                print(gen.shape)
-                
-                # gen = model.gen_samples_ddim(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
+        #     gen = gen.transpose(1,2).contiguous()
+        #     x = x.transpose(1,2).contiguous()
+        #     f = f.transpose(1,2).contiguous()
 
-                gen = gen.transpose(1,2).contiguous()
-                x = x.transpose(1,2).contiguous()
-                f = f.transpose(1,2).contiguous()
+        #     gen = gen * s + m
+        #     x = x * s + m
+        #     f = f * s + m
+        #     samples.append(gen.to(gpu).contiguous())
 
-                gen = gen * s + m
-                x = x * s + m
-                f = f * s + m
-                samples.append(gen.to(gpu).contiguous())
+        #     visualize_pointcloud_batch(os.path.join(outf_syn, f'{i}_{gpu}.png'), gen, None,
+        #                                None, None)
+            
+        #     # Compute metrics
+        #     results = compute_all_metrics(gen, x, opt.bs)
+        #     results = {k: (v.cpu().detach().item()
+        #                 if not isinstance(v, float) else v) for k, v in results.items()}
 
-                visualize_pointcloud_batch(os.path.join(outf_syn, f'{i}_{gpu}.png'), gen, None,
-                                        None, None)
-                
-                # Compute metrics
-                results = compute_all_metrics(gen, x, opt.bs)
-                results = {k: (v.cpu().detach().item()
-                            if not isinstance(v, float) else v) for k, v in results.items()}
+        #     jsd = JSD(gen.numpy(), x.numpy())
 
-                jsd = JSD(gen.numpy(), x.numpy())
-                
+        #     output_path = os.path.join(outf_syn, 'lamp_our_data')
+        #     if not os.path.exists(output_path):
+        #         os.makedirs(output_path)
 
-                ## y画像の保存
-                # s = s.repeat(copy_batch_num,1,1)
-                ## xの点群をnpyファイルで一つ一つ保存
-                for j in range(x.shape[0]):
-                    np.save(os.path.join(outf_syn,now, f'{i}_{j}_x.npy'), x[j].cpu().numpy())
-                ## genの点群をnpyファイルで一つ一つ保存
-                for j in range(gen.shape[0]):
-                    np.save(os.path.join(outf_syn,now, f'{i}_{j}_gen.npy'), gen[j].cpu().numpy())
-                for j in range(f.shape[0]):
-                    np.save(os.path.join(outf_syn,now, f'{i}_{j}_f.npy'), f[j].cpu().numpy())
-                for j in range(copy_batch_num):
-                    s = data['edit_sketch'][0]*255
-                    
-                    cv2.imwrite(os.path.join(outf_syn,now, f'{i}_{j}_y.png'), s.permute(1,2,0).cpu().numpy())
+        #     ## y画像の保存
+        #     for j in range(data['edit_sketch'].shape[0]):
+        #         s = data['edit_sketch'][j]*255
+        #         cv2.imwrite(os.path.join(output_path, f'{i}_{j}_y.png'), s.permute(1,2,0).cpu().numpy())
+        #     ## xの点群をnpyファイルで一つ一つ保存
+        #     for j in range(x.shape[0]):
+        #         np.save(os.path.join(output_path, f'{i}_{j}_x.npy'), x[j].cpu().numpy())
+        #     ## genの点群をnpyファイルで一つ一つ保存
+        #     for j in range(gen.shape[0]):
+        #         np.save(os.path.join(output_path, f'{i}_{j}_gen.npy'), gen[j].cpu().numpy())
+        #     for j in range(f.shape[0]):
+        #         np.save(os.path.join(output_path, f'{i}_{j}_f.npy'), f[j].cpu().numpy())
+        #     ## genの点群をplyファイルで一つ一つ保存
+            output_path = os.path.join(outf_syn, 'lamp_fix_sketch')
+            if not os.path.exists(output_path):
+                os.makedirs(output_path)
+            for j in range(x.shape[0]):
+                #copy path image
+                shutil.copy(Path(path[j],'fix_sketch.png'), os.path.join(output_path, f'{i}_{j}_f.png'))
 
-                evaluator.update(results, jsd)
-            else:
-                pass
-            # if (i+1)%5 == 0:
-            # break
+        #     evaluator.update(results, jsd)
+            if (i+1)%120 == 0:
+                break           
 
-        stats = evaluator.finalize_stats()
+        # stats = evaluator.finalize_stats()
 
-        samples = torch.cat(samples, dim=0)
+        # samples = torch.cat(samples, dim=0)
         # samples_gather = concat_all_gather(samples)
 
         # torch.save(samples_gather, opt.eval_path)
@@ -831,7 +795,7 @@ def parse_args():
     parser.add_argument('--category', default='chair')
     parser.add_argument('--num_classes', type=int, default=55)
 
-    parser.add_argument('--bs', type=int, default=1, help='input batch size')
+    parser.add_argument('--bs', type=int, default=64, help='input batch size')
     parser.add_argument('--workers', type=int, default=16, help='workers')
     parser.add_argument('--niter', type=int, default=10000, help='number of epochs to train for')
 

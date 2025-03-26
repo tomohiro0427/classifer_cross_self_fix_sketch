@@ -304,6 +304,7 @@ class DiT(nn.Module):
         y: (N, 257, 1280) cross
         f: (N, C, P) fixed point cloud 
         """
+        # print(self.patch_size)
         
         # Voxelization
         features, coords = x, x

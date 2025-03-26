@@ -424,11 +424,13 @@ class Sketch_our(data.Dataset):
         points = np.load(Path(data_path.parent.parent, '0_gen.npy'))
         parquet_data = pd.read_parquet(Path(data_path.parent, f'label.parquet'))
         label =  parquet_data['label'].values
+        # label =  parquet_data['fix_bool'].values
         label = label[np.newaxis, ...]
         
         point_cloud, [shift, scale] = point_operation.normalize_point_cloud(points[np.newaxis, ...], verbose=True)
         fix_points = torch.tensor(point_cloud[label]).squeeze(0)
         # fix_points = torch.cat([fix_points]*2, dim=0)[2048:,:].squeeze(0)
+        # fix_points = fix_points[:2048,:]
 
         point_cloud = torch.tensor(point_cloud).squeeze(0)
         shift, scale = torch.from_numpy(np.asarray(shift.reshape(self.input_dim))), torch.from_numpy(np.asarray(scale.reshape(1)))
@@ -445,4 +447,80 @@ class Sketch_our(data.Dataset):
             'shift': shift,
             'scale': scale,
             'name': data_path.stem,
+            'path': str(data_path.parent),
+        }
+    
+class add_Sketch_our(data.Dataset):
+    def __init__(self, root):
+        self.root_dir = Path(root)
+        self.data_paths = self.find_datas_dir()
+        self.input_dim = 3
+        print(self.__len__())
+    
+    def find_datas_dir(self):
+        dir_data_path = []
+        for path in self.root_dir.rglob('**/edit_sketch.png'):
+            dir_data_path.append(path)
+        if len(dir_data_path) == 0:
+            print('No edit_sketch.png file found')
+        return dir_data_path
+    
+    def get_image_data(self, path, name=None):
+        if name is None:
+            image_path = Path(path)
+        else: 
+            image_path = Path(path, name)
+        if not image_path.exists():
+            print(f'File not found: {image_path}')
+        else:
+            image = cv2.imread(str(image_path))
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(image)
+            image = transforms.Resize((224, 224))(image)
+            image = transforms.ToTensor()(image)
+
+        return image
+    
+
+    def __len__(self):
+        return len(self.data_paths)
+
+    def __getitem__(self, idx):
+        data_path = self.data_paths[idx]
+        edit_sketch = self.get_image_data(data_path)
+
+        # name = int(data_path.stem.split('-')[0])
+        # pkl_path = Path(data_path.parents[2],'chairs_sym_hard', f'{name:04d}.pkl')
+        # with open(pkl_path, 'rb') as f:
+        #     data = pickle.load(f)
+        # points = np.array(np.vstack(data['points']))
+        # points = points[np.random.choice(points.shape[0], 2048, replace=False)]
+
+        points = np.load(Path(data_path.parent, 'origin.npy'))
+        # parquet_data = pd.read_parquet(Path(data_path.parent, f'label.parquet'))
+        # label =  parquet_data['label'].values
+        # label = label[np.newaxis, ...]
+        points = points[:2048,:]
+        
+        point_cloud, [shift, scale] = point_operation.normalize_point_cloud(points[np.newaxis, ...], verbose=True)
+        # fix_points = torch.tensor(point_cloud[label]).squeeze(0)
+        # fix_points = torch.cat([fix_points]*2, dim=0)[2048:,:].squeeze(0)
+        
+
+        point_cloud = torch.tensor(point_cloud).squeeze(0)
+        shift, scale = torch.from_numpy(np.asarray(shift.reshape(self.input_dim))), torch.from_numpy(np.asarray(scale.reshape(1)))
+
+        # return辞書に他の固定的な値を追加
+        return {
+            # 'point_cloud': point_cloud,
+            'sample_points': point_cloud,
+            # 'all_sketch': all_sketch,
+            'edit_sketch': edit_sketch,
+            # 'fix_points': fix_points,
+            'idx'   : idx,
+            'path': str(data_path),
+            'shift': shift,
+            'scale': scale,
+            'name': data_path.stem,
+            'path': str(data_path.parent),
         }

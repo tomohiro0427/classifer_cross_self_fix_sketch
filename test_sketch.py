@@ -22,6 +22,7 @@ from models.dit3d import DiT3D_models
 from utils.misc import Evaluator
 from models.dit3d_window_attn import DiT3D_models_WindAttn
 from data_module.data_module import PointCloudPartSegWhithSketch, RandamPartialPointCloudWhithSketch, Sketch_our
+import time
 
 import numpy as np
 import cv2
@@ -545,7 +546,8 @@ def get_dataset(dataroot, npoints,category,use_mask=False):
     # path_root = '../cross_sketch_all_Mesh/figure_samples/figure_2/'
     
     # path_root = '../evaluate_datas/gen2edit/output_our/03001627/9/2/'
-    path_root = '../evaluate_datas/gen2edit/compare_data/datas/'
+    # path_root = '../evaluate_datas/gen2edit/compare_data/datas/17/'
+    path_root = '../evaluate_datas/challenging/add/plus/'
     tr_dataset = Sketch_our(root=path_root,
                                             )
     te_dataset = Sketch_our(root=path_root,
@@ -597,6 +599,8 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
     def new_y_chain(device, num_chain, num_classes):
         return torch.randint(low=0,high=num_classes,size=(num_chain,),device=device)
     
+    # print(sum(p.numel() for p in model.parameters()))
+    
     with torch.no_grad():
 
         samples = []
@@ -622,7 +626,14 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
 
             # gen = model.gen_samples(x.shape, gpu, new_y_chain(gpu,y.shape[0],opt.num_classes), clip_denoised=False).detach().cpu()
             # gen = model.gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
+            # model toral params 
+            
+            time_start = time.time()
             gen = model.classifier_gen_samples(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
+
+            time_end = time.time()
+
+            print(f'gen time: {time_end - time_start}')
             
             # gen = model.gen_samples_ddim(x.shape, gpu, y,f, clip_denoised=False).detach().cpu()
 
@@ -839,7 +850,7 @@ def parse_args():
     parser.add_argument('--eval_path',
                         default='')
 
-    parser.add_argument('--manualSeed', default=41, type=int, help='random seed')
+    parser.add_argument('--manualSeed', default=50, type=int, help='random seed')
 
     opt = parser.parse_args()
 

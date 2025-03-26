@@ -21,7 +21,7 @@ from datasets.shapenet_data_pc import ShapeNet15kPointClouds
 from models.dit3d import DiT3D_models
 from utils.misc import Evaluator
 from models.dit3d_window_attn import DiT3D_models_WindAttn
-from data_module.data_module import PointCloudPartSegWhithSketch, RandamPartialPointCloudWhithSketch, Sketch_our
+from data_module.data_module import PointCloudPartSegWhithSketch, RandamPartialPointCloudWhithSketch, Sketch_our, add_Sketch_our
 
 import numpy as np
 import cv2
@@ -239,11 +239,11 @@ class GaussianDiffusion:
 
         model_output = model_none
 
-        w_y = 4
-        w_f = 4
+        w_y = 3
+        w_f = 3
         now_batch = 0
-        for i in range(w_y):
-            for j in range(w_f):
+        for i in range(1, w_y,1):
+            for j in range(1, w_f, 1):
                 # model_output = (w_y*model_sketch[now_batch] - w_y * model_none[now_batch]) +((1+w_f)*model_points[now_batch] - w_f*model_none[now_batch])
                 if i == 0 and j == 0:
                     model_output[now_batch] = model_none[now_batch]
@@ -569,11 +569,11 @@ def get_dataset(dataroot, npoints,category,use_mask=False):
     #                                         get_images = ['edit_sketch'],
     #                                         )
 
-    # path_root = '../evaluate_datas/gen2edit/compare_data/datas/18/'
-    path_root = '../evaluate_datas/challenging/add/12/'
-    tr_dataset = Sketch_our(root=path_root,
+    dataroot = '../evaluate_datas/challenging/add/11/'
+
+    tr_dataset = add_Sketch_our(root=dataroot,
                                             )
-    te_dataset = Sketch_our(root=path_root,
+    te_dataset = add_Sketch_our(root=dataroot,
                                             )
 
     
@@ -624,7 +624,7 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
     
     #続行時の時間を取得string
     now = str(datetime.datetime.now()).replace(' ', '_').replace(':', '_').replace('.', '_')
-    name = 'traiangel'
+    name = 'output_our_5_1'
     save_dir = os.path.join(outf_syn,now,name)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -645,14 +645,14 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
                 m, s = data['shift'].float(), data['scale'].float()
                 # y = data['cate_idx']
                 x = data['sample_points'].transpose(1,2)
-                f = data['fix_points'].transpose(1,2)
-                # f = data['sample_points'].transpose(1,2)
+                # f = data['fix_points'].transpose(1,2)
+                f = data['sample_points'].transpose(1,2)
                 y = data['edit_sketch']
                 image_features = feature_extractor.forward_features(y.cuda())
                 # y = image_features[:, 0, :]
                 y = image_features
 
-                copy_batch_num = 16
+                copy_batch_num = 9
 
                 # x copy 9 batch
                 x = x.repeat(copy_batch_num,1,1)
